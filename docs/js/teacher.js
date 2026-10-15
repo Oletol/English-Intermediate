@@ -9,7 +9,7 @@ import { COURSE_TITLE } from "./firebase-config.js";
 import {
   esc, renderBlocks, renderExercise, exercisesOf, isAuto, gradeAuto, buildResult, keyText, norm,
   fmtTime, friendlyError, authFormHTML, wireAuthForm, subId, KIND_LABEL, isTeacherChecked, gradeExercise, wireFlashcards, isManual,
-  ICON,
+  ICON, isWatch, unitNo, unitLabel,
 } from "./common.js";
 import { initShell, renderUnitNav, wireUnitNav } from "./shell.js";
 import { loadVocab, grammarCheck, vocabProfile, unitVocabulary, feedbackHTML, sleep } from "./writing.js";
@@ -46,6 +46,7 @@ document.querySelectorAll("[data-course-title]").forEach((el) => (el.textContent
 initShell();
 wireFlashcards();
 wireUnitNav($("#unit-nav"), () => renderNav());
+wireUnitNav($("#watch-nav"), () => renderNav());
 
 function toast(t, ms = 3500) {
   const el = document.createElement("div");
@@ -95,7 +96,7 @@ onAuthStateChanged(auth, async (user) => {
 // ------------------------------------------------------------------ context: group + unit
 function fillCtx() {
   $("#ctx-group").innerHTML = T.groups.map((g) => `<option value="${esc(g.id)}" ${g.id === T.gid ? "selected" : ""}>${esc(g.name || g.id)}</option>`).join("") || `<option value="">no groups yet</option>`;
-  $("#ctx-unit").innerHTML = T.units.map((u, i) => `<option value="${esc(u.id)}" ${u.id === T.unitId ? "selected" : ""}>Unit ${u.order || i + 1}</option>`).join("") || `<option value="">no units yet</option>`;
+  $("#ctx-unit").innerHTML = T.units.map((u, i) => `<option value="${esc(u.id)}" ${u.id === T.unitId ? "selected" : ""}>${esc(unitLabel(u, T.units))}</option>`).join("") || `<option value="">no units yet</option>`;
 }
 $("#ctx-group").addEventListener("change", (e) => { T.gid = e.target.value; ls.set("gid", T.gid); T.selected = null; subscribeCtx(); render(); });
 $("#ctx-unit").addEventListener("change", (e) => setUnit(e.target.value));
@@ -163,25 +164,26 @@ window.addEventListener("hashchange", () => {
 
 const group = () => T.groups.find((g) => g.id === T.gid);
 const unit = () => T.units.find((u) => u.id === T.unitId);
-const unitNum = (u) => u.order || T.units.indexOf(u) + 1;
+const unitNum = (u) => unitNo(u, T.units);
+const unitLbl = (u) => unitLabel(u, T.units);
 
 function renderNav() {
   const r = route();
   $("#tool-nav").innerHTML = TOOLS.map((t) => `<a class="sb-item ${r.tool === t.id ? "on" : ""}" href="#tools/${t.id}">
       <span class="ic">${t.icon}</span><span class="t">${t.title}<span class="s">${t.sub}</span></span></a>`).join("");
   const g = group();
-  renderUnitNav($("#unit-nav"), {
-    units: T.units,
-    route: { unit: r.unit, section: r.section },
-    empty: `No units yet. Import the course file in <a href="#tools/content">Course content</a>.`,
-    state: (u) => {
+  const watch = T.units.filter(isWatch);
+  $("#watch-nav-wrap").hidden = !watch.length;
+  const unitState = (u) => {
       if (u.status === "soon") return { locked: false, note: "Coming soon", noteClass: "lock" };
       if (!g) return { locked: false, note: "" };
       if (g.releasedUnits.includes(u.id)) return { locked: false, note: `✓ Results released · ${esc(g.name)}`, noteClass: "good" };
       if (g.openUnits.includes(u.id)) return { locked: false, note: `Open for ${esc(g.name)}`, noteClass: "good" };
       return { locked: false, note: `Closed for ${esc(g.name)}`, noteClass: "lock" };
-    },
-  });
+  };
+  renderUnitNav($("#unit-nav"), { units: T.units.filter((u) => !isWatch(u)), route: { unit: r.unit, section: r.section }, num: unitNum,
+    empty: `No units yet. Import the course file in <a href="#tools/content">Course content</a>.`, state: unitState });
+  renderUnitNav($("#watch-nav"), { units: watch, route: { unit: r.unit, section: r.section }, num: unitNum, state: unitState });
 }
 
 function render(force = false) {
@@ -208,22 +210,22 @@ function viewUnit(r) {
   const u = T.units.find((x) => x.id === r.unit);
   if (!u) return pageHead("Unit", "Unit not found");
   const n = unitNum(u);
-  $("#crumb").innerHTML = `<b>Unit ${n}</b> &middot; ${esc(u.title)}`;
+  $("#crumb").innerHTML = `<b>${esc(unitLbl(u))}</b> &middot; ${esc(u.title)}`;
   const g = group();
   const bar = g && u.status !== "soon" ? accessBar(u, g) : "";
-  if (u.status === "soon") return pageHead(`Unit ${n}`, esc(u.title)) + `<div class="locked-msg"><span class="big">${ICON.tools}</span>This unit is still being prepared. Import its content in <a href="#tools/content">Course content</a>.</div>`;
+  if (u.status === "soon") return pageHead(esc(unitLbl(u)), esc(u.title)) + `<div class="locked-msg"><span class="big">${ICON.tools}</span>This unit is still being prepared. Import its content in <a href="#tools/content">Course content</a>.</div>`;
   const d = T.unitData[u.id];
   if (!d) { loadUnitData(u.id).then(() => render(true)); return `<p class="muted">Loading…</p>`; }
-  if (!d.content) return pageHead(`Unit ${n}`, esc(u.title)) + `<div class="locked-msg">This unit has no content yet.</div>`;
+  if (!d.content) return pageHead(esc(unitLbl(u)), esc(u.title)) + `<div class="locked-msg">This unit has no content yet.</div>`;
   const secs = d.content.sections;
   const sec = secs.find((s) => s.id === r.section) || secs[0];
   const i = secs.indexOf(sec);
   const meta = (u.sections || []).find((s) => s.id === sec.id) || {};
-  $("#crumb").innerHTML = `<b>Unit ${n}</b> &middot; ${n}.${i + 1} ${esc(sec.title)}`;
+  $("#crumb").innerHTML = `<b>${esc(unitLbl(u))}</b> &middot; ${n}.${i + 1} ${esc(sec.title)}`;
   const blocks = [...sec.blocks];
   for (const note of [...(d.notes[sec.id] || [])].reverse()) blocks.splice(note.at, 0, { type: "teacher-note", html: note.html });
   const prev = secs[i - 1], next = secs[i + 1];
-  return bar + pageHead(`Unit ${n} &middot; ${n}.${i + 1}`, esc(sec.title), esc(meta.subtitle || sec.subtitle || ""))
+  return bar + pageHead(`${esc(unitLbl(u))} &middot; ${n}.${i + 1}`, esc(sec.title), esc(meta.subtitle || sec.subtitle || ""))
     + renderBlocks(blocks, (ex) => ({
       key: d.keys[ex.id] || {}, readOnly: true,
       tag: ex.check === "teacher" ? (isManual(ex) ? "Writing check by the teacher" : "Checked by the teacher") : "",
@@ -452,7 +454,7 @@ async function releaseUnit(gid, unitId) {
 function viewWorks() {
   const g = group(), u = unit();
   const head = pageHead("Teaching tools", "Student work",
-    g && u ? `Unit ${unitNum(u)} · ${esc(u.title)} — group ${esc(g.name)}` : "");
+    g && u ? `${esc(unitLbl(u))} · ${esc(u.title)} — group ${esc(g.name)}` : "");
   if (!g || !u) return head + `<div class="box">Choose a group and a unit at the top of the page.</div>`;
   const data = T.unitData[u.id];
   if (!data) return head + `<p class="muted">Loading…</p>`;
@@ -543,7 +545,7 @@ async function saveGrades(uid) {
 function viewStats() {
   const g = group(), u = unit();
   const head = pageHead("Teaching tools", "Analytics",
-    g && u ? `Unit ${unitNum(u)} · ${esc(u.title)} — group ${esc(g.name)}` : "")
+    g && u ? `${esc(unitLbl(u))} · ${esc(u.title)} — group ${esc(g.name)}` : "")
     + `<label class="row"><input type="checkbox" id="inc-drafts" ${T.includeDrafts ? "checked" : ""}> include drafts that have not been submitted</label>`;
   if (!g || !u) return head + `<div class="box">Choose a group and a unit at the top of the page.</div>`;
   const data = T.unitData[u.id];
@@ -662,6 +664,7 @@ function splitUnit(u) {
   const hasContent = Array.isArray(u.sections) && u.sections.some((s) => (s.blocks || []).length);
   const meta = {
     title: u.title, order: Number(u.order ?? 0),
+    ...(u.track === "watch" ? { track: "watch" } : {}), ...(u.subtitle ? { subtitle: String(u.subtitle) } : {}),
     status: u.status || (hasContent ? "ready" : "soon"),
     sections: (u.sections || []).map((s) => ({ id: s.id, title: s.title, ...(s.subtitle ? { subtitle: s.subtitle } : {}) })),
   };
@@ -725,7 +728,7 @@ async function importCourse() {
     const summary = parts.filter((p) => p.content).map((p, i) => {
       const u = list[parts.indexOf(p)];
       const nEx = p.content.sections.reduce((n, sec) => n + sec.blocks.filter((b) => b.type === "exercise" || b.numbered).length, 0);
-      return `Unit ${u.order || i + 1}: ${p.content.sections.length} ${p.content.sections.length === 1 ? "section" : "sections"}, ${nEx} exercises`;
+      return `${u.title}: ${p.content.sections.length} ${p.content.sections.length === 1 ? "section" : "sections"}, ${nEx} exercises`;
     }).join("; ");
     setImportStatus(`<b style="color:var(--ok)">✓ Imported ${parts.length} units at ${fmtTime(new Date())}.</b> ${esc(summary)}`);
     toast(`Units imported: ${parts.length}`);
@@ -877,7 +880,7 @@ function viewTests() {
       : cfg?.open ? `<span class="pill warn">open now</span>`
       : cfg ? `<span class="pill off">closed</span>` : `<span class="pill off">hidden</span>`;
     return `<tr class="${T.testSel === t.key ? "sel" : ""}">
-      <td><b>${esc(t.title)}</b><br><small class="muted">Unit ${u ? unitNum(u) : esc(t.unitId)}</small></td>
+      <td><b>${esc(t.title)}</b><br><small class="muted">${u ? esc(unitLbl(u)) : esc(t.unitId)}</small></td>
       <td class="num">${t.minutes} min</td>
       <td>${status}</td>
       <td class="row">

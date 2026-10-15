@@ -30,12 +30,12 @@ let lastUnit = null;
  * state(u) -> { locked: bool, note: string, noteClass: string }
  * route:  { unit, section }
  */
-export function renderUnitNav(el, { units, state, route, hrefPrefix = "", empty = "" }) {
+export function renderUnitNav(el, { units, state, route, hrefPrefix = "", empty = "", num: numOf = null }) {
   if (route.unit !== lastUnit) { manual.clear(); lastUnit = route.unit; }
   if (!units.length) { el.innerHTML = `<div class="sb-empty">${empty}</div>`; return; }
   el.innerHTML = units.map((u, i) => {
     const st = state(u);
-    const num = u.order || i + 1;
+    const num = numOf ? numOf(u) : u.order || i + 1;
     const current = route.unit === u.id;
     const canOpen = !st.locked && (u.sections || []).length && u.status !== "soon";
     const open = canOpen && (current || manual.has(u.id));

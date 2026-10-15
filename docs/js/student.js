@@ -9,7 +9,7 @@ import { COURSE_TITLE } from "./firebase-config.js";
 import {
   esc, renderBlocks, readInput, fmtTime, friendlyError, authFormHTML, wireAuthForm, subId, exercisesOf, isAuto,
   isTeacherChecked, wireFlashcards, countWords,
-  ICON,
+  ICON, isWatch, unitNo, unitLabel,
 } from "./common.js";
 import { initShell, renderUnitNav, wireUnitNav } from "./shell.js";
 import { feedbackHTML } from "./writing.js";
@@ -36,6 +36,7 @@ initShell();
 wireFlashcards();
 protectBook();
 wireUnitNav(document.querySelector("#unit-nav"), () => renderNav());
+wireUnitNav(document.querySelector("#watch-nav"), () => renderNav());
 
 // ------------------------------------------------------------------ auth
 $("#auth-screen").innerHTML = authFormHTML({ eyebrow: "Course Workbook", title: COURSE_TITLE, allowRegister: true });
@@ -190,23 +191,25 @@ function renderNav() {
     return `<a class="sb-item ${r.unit === "test" && r.section === key ? "on" : ""}" href="#test/${esc(key)}">
       <span class="ic">${ICON.clock}</span><span class="t">${esc(t.title)}<span class="s">${esc(note)}</span></span></a>`;
   }).join("");
-  renderUnitNav($("#unit-nav"), {
-    units: S.units,
-    route: route(),
-    empty: "The course units will appear here.",
-    state: (u) => {
+  // films and episodes: a student sees only the ones opened for them
+  const watch = S.units.filter((u) => isWatch(u) && isOpen(u.id) && u.status !== "soon");
+  $("#watch-nav-wrap").hidden = !watch.length;
+  const unitState = (u) => {
       if (u.status === "soon") return { locked: true, note: "Coming soon", noteClass: "lock" };
       if (!isOpen(u.id)) return { locked: true, note: "Locked", noteClass: "lock" };
       if (isReleased(u.id)) return { locked: false, note: "✓ Results available", noteClass: "good" };
       const st = S.sub[u.id]?.status;
-      return { locked: false, note: st === "submitted" ? "Submitted" : "" };
-    },
-  });
+      return { locked: false, note: st === "submitted" ? "Submitted" : (isWatch(u) && u.subtitle ? esc(u.subtitle) : "") };
+  };
+  renderUnitNav($("#unit-nav"), { units: S.units.filter((u) => !isWatch(u)), route: route(), num: unitNum,
+    empty: "The course units will appear here.", state: unitState });
+  renderUnitNav($("#watch-nav"), { units: watch, route: route(), num: unitNum, state: unitState });
 }
 
 // ------------------------------------------------------------------ main
 function setCrumb(html) { $("#crumb").innerHTML = html; }
-const unitNum = (u) => u.order || S.units.indexOf(u) + 1;
+const unitNum = (u) => unitNo(u, S.units);
+const unitLbl = (u) => unitLabel(u, S.units);
 
 function renderMain() {
   if (!S.user || !S.group) return;
@@ -224,15 +227,15 @@ function renderMain() {
     content.innerHTML = `<header class="page-h"><div class="pe">Welcome</div><h2>Hello${S.profile ? ", " + esc(S.profile.name) : ""}!</h2>
       <p class="pl">${open.length ? "Choose a unit to start working." : "No units are open yet. They will appear here automatically as soon as your teacher opens them."}</p></header>
       ${visibleTests().filter(([, t]) => t.open).map(([key, t]) => `<div class="ub ub-res"><span><b>Test: ${esc(t.title)}</b> · ${t.minutes} minutes</span><a class="btn primary" href="#test/${esc(key)}">Go to the test</a></div>`).join("")}
-      ${open.length ? `<div class="cards">${open.map((u) => `<a class="pg" href="#${esc(u.id)}"><span class="d">Unit ${unitNum(u)}</span><span class="t">${esc(u.title)}</span></a>`).join("")}</div>` : ""}`;
+      ${open.length ? `<div class="cards">${open.map((u) => `<a class="pg" href="#${esc(u.id)}"><span class="d">${esc(unitLbl(u))}</span><span class="t">${esc(u.title)}</span></a>`).join("")}</div>` : ""}`;
     return;
   }
-  document.title = `Unit ${unitNum(unit)} · ${unit.title}`;
-  setCrumb(`<b>Unit ${unitNum(unit)}</b> &middot; ${esc(unit.title)}`);
+  document.title = `${unitLbl(unit)} · ${unit.title}`;
+  setCrumb(`<b>${esc(unitLbl(unit))}</b> &middot; ${esc(unit.title)}`);
   if (!isOpen(unit.id) || unit.status === "soon") {
     $("#unit-bar").innerHTML = "";
     content.dataset.view = "";
-    content.innerHTML = `<header class="page-h"><div class="pe">Unit ${unitNum(unit)}</div><h2>${esc(unit.title)}</h2></header>
+    content.innerHTML = `<header class="page-h"><div class="pe">${esc(unitLbl(unit))}</div><h2>${esc(unit.title)}</h2></header>
       <div class="locked-msg"><span class="big">${ICON.lock}</span>${unit.status === "soon"
         ? "This unit is still being prepared."
         : "This unit is not open yet. It will open automatically when your teacher gives your group access."}</div>`;
@@ -246,7 +249,7 @@ function renderMain() {
   const sec = c.sections.find((s) => s.id === r.section) || c.sections[0];
   const secIdx = c.sections.indexOf(sec) + 1;
   const meta = (unit.sections || []).find((s) => s.id === sec.id) || {};
-  setCrumb(`<b>Unit ${unitNum(unit)}</b> &middot; ${unitNum(unit)}.${secIdx} ${esc(sec.title)}`);
+  setCrumb(`<b>${esc(unitLbl(unit))}</b> &middot; ${unitNum(unit)}.${secIdx} ${esc(sec.title)}`);
   const released = isReleased(unit.id);
   const res = released ? S.result[unit.id] : undefined;
   const readOnly = released || sub.status === "submitted";
@@ -261,7 +264,7 @@ function renderMain() {
   }
   content.dataset.view = viewKey;
   content.dataset.unit = unit.id;
-  content.innerHTML = `<header class="page-h"><div class="pe">Unit ${unitNum(unit)} &middot; ${unitNum(unit)}.${secIdx}</div>
+  content.innerHTML = `<header class="page-h"><div class="pe">${esc(unitLbl(unit))} &middot; ${unitNum(unit)}.${secIdx}</div>
       <h2>${esc(sec.title)}</h2>${meta.subtitle || sec.subtitle ? `<p class="pl">${esc(meta.subtitle || sec.subtitle)}</p>` : ""}</header>`
     + renderBlocks(sec.blocks, (ex) => {
       const exDone = relEx.includes(ex.id);   // the teacher has checked this exercise
