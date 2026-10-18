@@ -30,7 +30,7 @@ let lastUnit = null;
  * state(u) -> { locked: bool, note: string, noteClass: string }
  * route:  { unit, section }
  */
-export function renderUnitNav(el, { units, state, route, hrefPrefix = "", empty = "", num: numOf = null }) {
+export function renderUnitNav(el, { units, state, route, hrefPrefix = "", empty = "", num: numOf = null, secNum = null, secVisible = null }) {
   if (route.unit !== lastUnit) { manual.clear(); lastUnit = route.unit; }
   if (!units.length) { el.innerHTML = `<div class="sb-empty">${empty}</div>`; return; }
   el.innerHTML = units.map((u, i) => {
@@ -39,10 +39,12 @@ export function renderUnitNav(el, { units, state, route, hrefPrefix = "", empty 
     const current = route.unit === u.id;
     const canOpen = !st.locked && (u.sections || []).length && u.status !== "soon";
     const open = canOpen && (current || manual.has(u.id));
+    const first = (u.sections || []).find((s) => !secVisible || secVisible(u, s));
     const secs = canOpen ? (u.sections || []).map((s, j) => {
-      const on = current && (route.section || u.sections[0]?.id) === s.id;
+      if (secVisible && !secVisible(u, s)) return "";
+      const on = current && (route.section || first?.id) === s.id;
       return `<a class="sb-item ${on ? "on" : ""}" href="#${hrefPrefix}${esc(u.id)}/${esc(s.id)}">
-        <span class="n">${num}.${j + 1}</span><span class="t">${esc(s.title)}${s.subtitle ? `<span class="s">${esc(s.subtitle)}</span>` : ""}</span></a>`;
+        <span class="n">${secNum ? secNum(u, j + 1) : `${num}.${j + 1}`}</span><span class="t">${esc(s.title)}${s.subtitle ? `<span class="s">${esc(s.subtitle)}</span>` : ""}</span></a>`;
     }).join("") : "";
     return `<div class="sb-unit ${open ? "open" : ""} ${st.locked ? "locked" : ""} ${current ? "current" : ""}">
       <button class="sb-uh" type="button" data-unit="${esc(u.id)}" data-can-open="${canOpen ? 1 : 0}">

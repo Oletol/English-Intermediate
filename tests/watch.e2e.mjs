@@ -10,6 +10,7 @@ const course = readFileSync(new URL("../content-private/course.json", import.met
 const C = JSON.parse(course);
 const W = C.units.find((u) => u.id === "w1");
 const keyOf = (id) => W.sections.flatMap((s) => s.blocks).find((b) => b.id === id);
+const EP = "s1e14";
 const first = (a) => (Array.isArray(a) ? a[0] : a);
 
 const browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" }).catch(() => chromium.launch());
@@ -44,11 +45,12 @@ assert.ok(!pub.includes('"answer"'), "в unitContent нет ключей");
 assert.ok(!pub.includes("Plot in brief"), "заметки преподавателя не попадают к студенту");
 assert.equal(db["units/w1"].track, "watch");
 assert.equal(await t.locator('#unit-nav .sb-uh[data-unit="w1"]').count(), 0, "фильм не в списке юнитов");
-assert.equal((await t.textContent('#watch-nav .sb-uh[data-unit="w1"] .u-n')).trim(), "W1");
+assert.equal((await t.textContent('#watch-nav .sb-uh[data-unit="w1"] .u-n')).trim(), "EL");
+assert.equal(await t.locator('#watch-nav .sb-uh[data-unit="w2"]').count(), 1, "Hunger Games виден преподавателю");
 
 step("Преподаватель видит ключи");
 await t.click('#watch-nav .sb-uh[data-unit="w1"]');
-await t.click('#watch-nav .sb-item:has-text("Words to watch for")');
+await t.click('#watch-nav .sb-item:has-text("The Deductionist")');
 await t.waitForSelector(".keyhint");
 await t.screenshot({ path: `${SHOTS}/01-teacher-w1.png` });
 
@@ -71,12 +73,17 @@ assert.equal(await s.locator("#watch-nav-wrap").isHidden(), true, "закрыт�
 
 step("Преподаватель открывает эпизод");
 await t.click('a[href="#tools/access"]');
-await t.click("[data-act=toggle-open][data-unit=w1]");
+assert.equal(await t.locator("[data-act=toggle-open][data-unit=w1]").count(), 0, "модуль открывается по эпизодам");
+await t.click(`[data-act=toggle-sec][data-unit=w1][data-sec=${EP}]`);
+await t.waitForSelector(`[data-act=toggle-sec][data-unit=w1][data-sec=${EP}]:has-text("Close")`);
 await s.waitForSelector('#watch-nav .sb-uh[data-unit="w1"]', { timeout: 5000 });
 await s.click('#watch-nav .sb-uh[data-unit="w1"]');
-await s.click('#watch-nav .sb-item:has-text("Words to watch for")');
+await s.click('#watch-nav .sb-item:has-text("The Deductionist")');
 await s.waitForSelector(".fc");
-assert.equal((await s.textContent("#content .pe")).trim(), "Watch & Talk 1 · W1.1");
+assert.equal((await s.textContent("#content .pe")).trim(), "Elementary · EL1");
+assert.equal(await s.locator('#watch-nav .sb-uh[data-unit="w2"]').count(), 0, "закрытый модуль студенту не виден");
+assert.equal(await s.locator("#submit-unit").count(), 0, "в модуле с фильмами нет кнопки Submit");
+assert.equal((await s.textContent("#ex-wd1 .ex-n")).trim(), "EL1.2");
 assert.equal(await s.locator(".keyhint, .tnote").count(), 0, "у студента нет ключей и заметок");
 await s.screenshot({ path: `${SHOTS}/02-student-words.png` });
 await s.locator(".fc").screenshot({ path: `${SHOTS}/03-flashcard.png` });
@@ -85,7 +92,7 @@ await s.locator(".fc").screenshot({ path: `${SHOTS}/04-flashcard-back.png` });
 
 step("Студент отвечает во всех упражнениях (всё верно, кроме одного ответа в каждом)");
 const exIds = ["wd1", "st1", "st2", "vp1", "vp2", "vp3", "vp4", "vp5"];
-const secOf = { wd1: "words", st1: "story", st2: "story", vp1: "practice", vp2: "practice", vp3: "practice", vp4: "practice", vp5: "practice" };
+const secOf = Object.fromEntries(exIds.map((id) => [id, EP]));
 let cur = "";
 for (const id of exIds) {
   if (secOf[id] !== cur) { cur = secOf[id]; await s.goto(`${BASE}/index.html#w1/${cur}`); await s.waitForSelector(`#ex-${id}`); }
@@ -111,9 +118,9 @@ for (const id of exIds) {
   assert.equal((await s.textContent(`#ex-${id} .ex-score`)).trim(), `${n - 1} / ${n}`, id);
   assert.equal(await s.locator(`#ex-${id} .gap.bad, #ex-${id} label.bad`).count(), 1, id + " one wrong");
 }
-await s.goto(`${BASE}/index.html#w1/practice`); await s.waitForSelector("#ex-vp2 .ex-score");
+await s.goto(`${BASE}/index.html#w1/${EP}`); await s.waitForSelector("#ex-vp2 .ex-score");
 await s.screenshot({ path: `${SHOTS}/05-student-practice-checked.png`, fullPage: true });
-await s.goto(`${BASE}/index.html#w1/story`); await s.waitForSelector("#ex-st2 .ex-score");
+await s.goto(`${BASE}/index.html#w1/${EP}`); await s.waitForSelector("#ex-st2 .ex-score");
 await s.screenshot({ path: `${SHOTS}/06-student-story.png`, fullPage: true });
 const txt = await s.evaluate(() => document.body.innerText);
 assert.equal(/[→←⤮»«▼›]/.test(txt), false, "нет стрелок");
@@ -121,12 +128,16 @@ assert.equal(/[→←⤮»«▼›]/.test(txt), false, "нет стрелок");
 step("Мобильная ширина");
 await s.setViewportSize({ width: 390, height: 844 });
 await s.waitForTimeout(500);  // the sidebar slides away with a transition
-for (const sec of ["words", "story", "practice"]) {
+for (const sec of [EP]) {
   await s.goto(`${BASE}/index.html#w1/${sec}`); await s.waitForSelector(".ex"); await s.waitForTimeout(400);
   assert.equal(await s.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, sec + " overflow");
 }
 await s.screenshot({ path: `${SHOTS}/07-mobile.png` });
 
+step("Преподаватель закрывает эпизод");
+await t.goto(`${BASE}/teacher.html#tools/access`);
+await t.click(`[data-act=toggle-sec][data-unit=w1][data-sec=${EP}]`);
+await s.waitForSelector("#watch-nav-wrap", { state: "hidden", timeout: 5000 });
 assert.deepEqual(errors, []);
 console.log("\nWATCH & TALK: ВСЕ ШАГИ ПРОЙДЕНЫ");
 await browser.close();

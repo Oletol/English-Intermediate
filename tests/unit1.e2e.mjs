@@ -44,7 +44,7 @@ assert.ok(!pub.includes('"answer"'), "в unitContent нет ключей");
 assert.ok(!pub.includes("Plot in brief"), "заметки преподавателя не попадают к студенту");
 assert.equal(db["units/w1"].track, "watch");
 assert.equal(await t.locator('#unit-nav .sb-uh[data-unit="w1"]').count(), 0, "фильм не в списке юнитов");
-assert.equal((await t.textContent('#watch-nav .sb-uh[data-unit="w1"] .u-n')).trim(), "W1");
+assert.equal((await t.textContent('#watch-nav .sb-uh[data-unit="w1"] .u-n')).trim(), "EL");
 
 step("Группа и студент");
 await t.click('a[href="#tools/groups"]');

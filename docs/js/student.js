@@ -9,7 +9,7 @@ import { COURSE_TITLE } from "./firebase-config.js";
 import {
   esc, renderBlocks, readInput, fmtTime, friendlyError, authFormHTML, wireAuthForm, subId, exercisesOf, isAuto,
   isTeacherChecked, wireFlashcards, countWords,
-  ICON, isWatch, unitNo, unitLabel,
+  ICON, isWatch, unitNo, unitLabel, secCode, secOpenFor,
 } from "./common.js";
 import { initShell, renderUnitNav, wireUnitNav } from "./shell.js";
 import { feedbackHTML } from "./writing.js";
@@ -191,8 +191,8 @@ function renderNav() {
     return `<a class="sb-item ${r.unit === "test" && r.section === key ? "on" : ""}" href="#test/${esc(key)}">
       <span class="ic">${ICON.clock}</span><span class="t">${esc(t.title)}<span class="s">${esc(note)}</span></span></a>`;
   }).join("");
-  // films and episodes: a student sees only the ones opened for them
-  const watch = S.units.filter((u) => isWatch(u) && isOpen(u.id) && u.status !== "soon");
+  // series and films: a student sees only the modules and episodes opened for them
+  const watch = S.units.filter((u) => isWatch(u) && isOpen(u.id) && u.status !== "soon" && (u.sections || []).some((s) => secOpen(u, s.id)));
   $("#watch-nav-wrap").hidden = !watch.length;
   const unitState = (u) => {
       if (u.status === "soon") return { locked: true, note: "Coming soon", noteClass: "lock" };
@@ -203,13 +203,16 @@ function renderNav() {
   };
   renderUnitNav($("#unit-nav"), { units: S.units.filter((u) => !isWatch(u)), route: route(), num: unitNum,
     empty: "The course units will appear here.", state: unitState });
-  renderUnitNav($("#watch-nav"), { units: watch, route: route(), num: unitNum, state: unitState });
+  renderUnitNav($("#watch-nav"), { units: watch, route: route(), num: unitNum, state: unitState,
+    secNum: (u, k) => secCode(u, S.units, k), secVisible: (u, s) => secOpen(u, s.id) });
 }
 
 // ------------------------------------------------------------------ main
 function setCrumb(html) { $("#crumb").innerHTML = html; }
 const unitNum = (u) => unitNo(u, S.units);
 const unitLbl = (u) => unitLabel(u, S.units);
+const secOpen = (u, secId) => secOpenFor(S.group, u, secId);
+const secNo = (u, k) => secCode(u, S.units, k);
 
 function renderMain() {
   if (!S.user || !S.group) return;
@@ -219,7 +222,7 @@ function renderMain() {
   const content = $("#content");
   content.dataset.test = "";
   if (!unit) {
-    const open = S.units.filter((u) => isOpen(u.id) && u.status !== "soon");
+    const open = S.units.filter((u) => isOpen(u.id) && u.status !== "soon" && (!isWatch(u) || (u.sections || []).some((s) => secOpen(u, s.id))));
     document.title = COURSE_TITLE;
     setCrumb(`<b>${esc(COURSE_TITLE)}</b>`);
     $("#unit-bar").innerHTML = "";
@@ -246,10 +249,17 @@ function renderMain() {
   if (c === undefined || !sub) { content.innerHTML = `<p class="muted">Loading…</p>`; return; }
   if (c === null) { content.innerHTML = `<div class="locked-msg">You do not have access to this unit.</div>`; return; }
 
-  const sec = c.sections.find((s) => s.id === r.section) || c.sections[0];
+  const sec = c.sections.find((s) => s.id === r.section) || c.sections.find((s) => secOpen(unit, s.id)) || c.sections[0];
   const secIdx = c.sections.indexOf(sec) + 1;
   const meta = (unit.sections || []).find((s) => s.id === sec.id) || {};
-  setCrumb(`<b>${esc(unitLbl(unit))}</b> &middot; ${unitNum(unit)}.${secIdx} ${esc(sec.title)}`);
+  setCrumb(`<b>${esc(unitLbl(unit))}</b> &middot; ${secNo(unit, secIdx)} ${esc(sec.title)}`);
+  if (!secOpen(unit, sec.id)) {
+    $("#unit-bar").innerHTML = "";
+    content.dataset.view = "";
+    content.innerHTML = `<header class="page-h"><div class="pe">${esc(unitLbl(unit))}</div><h2>${esc(sec.title)}</h2></header>
+      <div class="locked-msg"><span class="big">${ICON.lock}</span>This episode is not open yet. It will open automatically when your teacher gives you access.</div>`;
+    return;
+  }
   const released = isReleased(unit.id);
   const res = released ? S.result[unit.id] : undefined;
   const readOnly = released || sub.status === "submitted";
@@ -264,7 +274,7 @@ function renderMain() {
   }
   content.dataset.view = viewKey;
   content.dataset.unit = unit.id;
-  content.innerHTML = `<header class="page-h"><div class="pe">${esc(unitLbl(unit))} &middot; ${unitNum(unit)}.${secIdx}</div>
+  content.innerHTML = `<header class="page-h"><div class="pe">${esc(unitLbl(unit))} &middot; ${secNo(unit, secIdx)}</div>
       <h2>${esc(sec.title)}</h2>${meta.subtitle || sec.subtitle ? `<p class="pl">${esc(meta.subtitle || sec.subtitle)}</p>` : ""}</header>`
     + renderBlocks(sec.blocks, (ex) => {
       const exDone = relEx.includes(ex.id);   // the teacher has checked this exercise
@@ -280,17 +290,19 @@ function renderMain() {
         showPending: !!res,
         tag: ex.check === "teacher" && !res ? (exDone ? "Checked" : fb ? "Feedback ready – you can correct your text" : "Checked by your teacher") : "",
       };
-    }, `${unitNum(unit)}.${secIdx}`) + pagerHTML(unit, c, sec);
+    }, secNo(unit, secIdx)) + pagerHTML(unit, c, sec);
   renderUnitBar(unit, sub, released, res);
 }
 
 function pagerHTML(unit, c, sec) {
-  const i = c.sections.indexOf(sec);
-  const prev = c.sections[i - 1], next = c.sections[i + 1];
-  const n = unitNum(unit);
+  // only sections the student can open (episodes of a series are opened one by one)
+  const list = c.sections.filter((s) => secOpen(unit, s.id));
+  const i = list.indexOf(sec);
+  const prev = list[i - 1], next = list[i + 1];
+  const no = (s) => secNo(unit, c.sections.indexOf(s) + 1);
   return `<nav class="pager">
-    ${prev ? `<a class="pg" href="#${unit.id}/${prev.id}"><span class="d">Previous</span><span class="t">${n}.${i} ${esc(prev.title)}</span></a>` : ""}
-    ${next ? `<a class="pg next" href="#${unit.id}/${next.id}"><span class="d">Next</span><span class="t">${n}.${i + 2} ${esc(next.title)}</span></a>` : ""}
+    ${prev ? `<a class="pg" href="#${unit.id}/${prev.id}"><span class="d">Previous</span><span class="t">${no(prev)} ${esc(prev.title)}</span></a>` : ""}
+    ${next ? `<a class="pg next" href="#${unit.id}/${next.id}"><span class="d">Next</span><span class="t">${no(next)} ${esc(next.title)}</span></a>` : ""}
   </nav>`;
 }
 
@@ -309,7 +321,7 @@ function renderUnitBar(unit, sub, released, res) {
       ? `<div class="ub ub-ret"><b>Your teacher has returned this work for revision${sub.returnedAt?.toDate ? ` (${fmtTime(sub.returnedAt)})` : ""}.</b>
          ${sub.returnNote ? `<span class="ret-note">${esc(sub.returnNote)}</span>` : ""}<span class="muted">Make your changes and submit the unit again.</span></div>` : "";
     html = ret + `<div class="ub"><span id="save-state" class="muted">${sub.dirty ? "Unsaved changes…" : sub.updatedAt ? "Draft saved " + fmtTime(sub.updatedAt) : "Your answers are saved automatically"}</span>
-      <button class="btn primary" id="submit-unit">Submit this unit</button></div>`;
+      ${isWatch(unit) ? "" : `<button class="btn primary" id="submit-unit">Submit this unit</button>`}</div>`;
   }
   bar.innerHTML = html;
   $("#submit-unit")?.addEventListener("click", () => submitUnit(unit.id));

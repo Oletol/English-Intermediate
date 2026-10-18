@@ -9,7 +9,7 @@ import { COURSE_TITLE } from "./firebase-config.js";
 import {
   esc, renderBlocks, renderExercise, exercisesOf, isAuto, gradeAuto, buildResult, keyText, norm,
   fmtTime, friendlyError, authFormHTML, wireAuthForm, subId, KIND_LABEL, isTeacherChecked, gradeExercise, wireFlashcards, isManual,
-  ICON, isWatch, unitNo, unitLabel,
+  ICON, isWatch, unitNo, unitLabel, secCode, secOpenFor,
 } from "./common.js";
 import { initShell, renderUnitNav, wireUnitNav } from "./shell.js";
 import { loadVocab, grammarCheck, vocabProfile, unitVocabulary, feedbackHTML, sleep } from "./writing.js";
@@ -81,7 +81,7 @@ onAuthStateChanged(auth, async (user) => {
   $("#me-email").textContent = user.email;
 
   T.unsub.push(onSnapshot(collection(db, "groups"), (snap) => {
-    T.groups = snap.docs.map((d) => ({ id: d.id, openUnits: [], releasedUnits: [], releasedEx: {}, feedbackEx: {}, tests: {}, ...d.data() }))
+    T.groups = snap.docs.map((d) => ({ id: d.id, openUnits: [], releasedUnits: [], releasedEx: {}, feedbackEx: {}, openSections: {}, tests: {}, ...d.data() }))
       .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
     if (!T.groups.find((g) => g.id === T.gid)) T.gid = T.groups[0]?.id || "";
     fillCtx(); subscribeCtx(); render();
@@ -166,6 +166,7 @@ const group = () => T.groups.find((g) => g.id === T.gid);
 const unit = () => T.units.find((u) => u.id === T.unitId);
 const unitNum = (u) => unitNo(u, T.units);
 const unitLbl = (u) => unitLabel(u, T.units);
+const secNo = (u, k) => secCode(u, T.units, k);
 
 function renderNav() {
   const r = route();
@@ -178,12 +179,18 @@ function renderNav() {
       if (u.status === "soon") return { locked: false, note: "Coming soon", noteClass: "lock" };
       if (!g) return { locked: false, note: "" };
       if (g.releasedUnits.includes(u.id)) return { locked: false, note: `✓ Results released · ${esc(g.name)}`, noteClass: "good" };
+      if (isWatch(u)) {
+        const nOpen = g.openUnits.includes(u.id) ? (u.sections || []).filter((s) => secOpenFor(g, u, s.id)).length : 0;
+        return nOpen ? { locked: false, note: `${nOpen} of ${(u.sections || []).length} open for ${esc(g.name)}`, noteClass: "good" }
+                     : { locked: false, note: `Closed for ${esc(g.name)}`, noteClass: "lock" };
+      }
       if (g.openUnits.includes(u.id)) return { locked: false, note: `Open for ${esc(g.name)}`, noteClass: "good" };
       return { locked: false, note: `Closed for ${esc(g.name)}`, noteClass: "lock" };
   };
   renderUnitNav($("#unit-nav"), { units: T.units.filter((u) => !isWatch(u)), route: { unit: r.unit, section: r.section }, num: unitNum,
     empty: `No units yet. Import the course file in <a href="#tools/content">Course content</a>.`, state: unitState });
-  renderUnitNav($("#watch-nav"), { units: watch, route: { unit: r.unit, section: r.section }, num: unitNum, state: unitState });
+  renderUnitNav($("#watch-nav"), { units: watch, route: { unit: r.unit, section: r.section }, num: unitNum, state: unitState,
+    secNum: (u, k) => secNo(u, k) });
 }
 
 function render(force = false) {
@@ -212,7 +219,7 @@ function viewUnit(r) {
   const n = unitNum(u);
   $("#crumb").innerHTML = `<b>${esc(unitLbl(u))}</b> &middot; ${esc(u.title)}`;
   const g = group();
-  const bar = g && u.status !== "soon" ? accessBar(u, g) : "";
+  const bar = g && u.status !== "soon" ? accessBar(u, g, r.section || u.sections?.[0]?.id) : "";
   if (u.status === "soon") return pageHead(esc(unitLbl(u)), esc(u.title)) + `<div class="locked-msg"><span class="big">${ICON.tools}</span>This unit is still being prepared. Import its content in <a href="#tools/content">Course content</a>.</div>`;
   const d = T.unitData[u.id];
   if (!d) { loadUnitData(u.id).then(() => render(true)); return `<p class="muted">Loading…</p>`; }
@@ -221,19 +228,19 @@ function viewUnit(r) {
   const sec = secs.find((s) => s.id === r.section) || secs[0];
   const i = secs.indexOf(sec);
   const meta = (u.sections || []).find((s) => s.id === sec.id) || {};
-  $("#crumb").innerHTML = `<b>${esc(unitLbl(u))}</b> &middot; ${n}.${i + 1} ${esc(sec.title)}`;
+  $("#crumb").innerHTML = `<b>${esc(unitLbl(u))}</b> &middot; ${secNo(u, i + 1)} ${esc(sec.title)}`;
   const blocks = [...sec.blocks];
   for (const note of [...(d.notes[sec.id] || [])].reverse()) blocks.splice(note.at, 0, { type: "teacher-note", html: note.html });
   const prev = secs[i - 1], next = secs[i + 1];
-  return bar + pageHead(`${esc(unitLbl(u))} &middot; ${n}.${i + 1}`, esc(sec.title), esc(meta.subtitle || sec.subtitle || ""))
+  return bar + pageHead(`${esc(unitLbl(u))} &middot; ${secNo(u, i + 1)}`, esc(sec.title), esc(meta.subtitle || sec.subtitle || ""))
     + renderBlocks(blocks, (ex) => ({
       key: d.keys[ex.id] || {}, readOnly: true,
       tag: ex.check === "teacher" ? (isManual(ex) ? "Writing check by the teacher" : "Checked by the teacher") : "",
       before: ex.check === "teacher" && g ? (isManual(ex) ? writingBar(u, ex, g) : exerciseBar(u, ex, g)) : "",
-    }), `${n}.${i + 1}`)
+    }), secNo(u, i + 1))
     + `<nav class="pager">
-      ${prev ? `<a class="pg" href="#${u.id}/${prev.id}"><span class="d">Previous</span><span class="t">${n}.${i} ${esc(prev.title)}</span></a>` : ""}
-      ${next ? `<a class="pg next" href="#${u.id}/${next.id}"><span class="d">Next</span><span class="t">${n}.${i + 2} ${esc(next.title)}</span></a>` : ""}
+      ${prev ? `<a class="pg" href="#${u.id}/${prev.id}"><span class="d">Previous</span><span class="t">${secNo(u, i)} ${esc(prev.title)}</span></a>` : ""}
+      ${next ? `<a class="pg next" href="#${u.id}/${next.id}"><span class="d">Next</span><span class="t">${secNo(u, i + 2)} ${esc(next.title)}</span></a>` : ""}
     </nav>`;
 }
 
@@ -319,7 +326,15 @@ async function checkWriting(gid, unitId, exId) {
   });
 }
 
-function accessBar(u, g) {
+function accessBar(u, g, secId) {
+  if (isWatch(u)) {
+    // series and films: each episode is opened for the group separately
+    const sec = (u.sections || []).find((s) => s.id === secId);
+    const on = g.openUnits.includes(u.id) && secOpenFor(g, u, secId);
+    return sec ? `<div class="ub"><span>Group <b>${esc(g.name)}</b>, this episode:
+        <span class="pill ${on ? "on" : "off"}">${on ? "open" : "closed"}</span></span>
+      <span class="row"><button class="btn small ${on ? "" : "good"}" data-act="toggle-sec" data-unit="${esc(u.id)}" data-sec="${esc(sec.id)}">${on ? "Close this episode" : "Open this episode for the group"}</button></span></div>` : "";
+  }
   const open = g.openUnits.includes(u.id), rel = g.releasedUnits.includes(u.id);
   return `<div class="ub"><span>Group <b>${esc(g.name)}</b>:
       <span class="pill ${open ? "on" : "off"}">${open ? "open" : "closed"}</span>
@@ -340,6 +355,17 @@ function viewAccess() {
   const rows = T.units.map((u) => {
     const soon = u.status === "soon";
     const open = g.openUnits.includes(u.id), rel = g.releasedUnits.includes(u.id);
+    if (isWatch(u)) {
+      // a series or a film: one row per episode, each opened separately
+      const eps = (u.sections || []).map((s, k) => {
+        const on = open && secOpenFor(g, u, s.id);
+        return `<tr><td class="num">${esc(secNo(u, k + 1))}</td><td><a href="#${esc(u.id)}/${esc(s.id)}">${esc(s.title)}</a></td>
+          <td><span class="pill ${on ? "on" : "off"}">${on ? "open" : "closed"}</span>
+          <button class="btn small" data-act="toggle-sec" data-unit="${esc(u.id)}" data-sec="${esc(s.id)}">${on ? "Close" : "Open"}</button></td>
+          <td class="muted">checked exercise by exercise</td></tr>`;
+      }).join("");
+      return `<tr class="sel"><td class="num">${esc(unitNum(u))}</td><td colspan="3"><b>${esc(u.title)}</b>${u.subtitle ? ` <span class="muted">· ${esc(u.subtitle)}</span>` : ""}${soon ? ` <span class="pill off">coming soon</span>` : ""}</td></tr>${eps}`;
+    }
     return `<tr>
       <td class="num">${unitNum(u)}</td>
       <td><a href="#${esc(u.id)}">${esc(u.title)}</a></td>
@@ -380,6 +406,13 @@ document.addEventListener("click", (e) => {
   e.preventDefault();
   const act = b.dataset.act, u = b.dataset.unit;
   const handlers = {
+    "toggle-sec": () => guard(async () => {
+      const g = group(), s = b.dataset.sec;
+      const on = g.openUnits.includes(u) && secOpenFor(g, T.units.find((x) => x.id === u), s);
+      await updateDoc(doc(db, "groups", T.gid), on
+        ? { [`openSections.${u}`]: arrayRemove(s) }
+        : { [`openSections.${u}`]: arrayUnion(s), openUnits: arrayUnion(u) });
+    }),
     "toggle-open": () => guard(async () => {
       const open = group().openUnits.includes(u);
       await updateDoc(doc(db, "groups", T.gid), { openUnits: open ? arrayRemove(u) : arrayUnion(u) });
@@ -497,8 +530,8 @@ function studentDetail(uid, data) {
   const body = data.content.sections.map((sec, i) => {
     const exs = (sec.blocks || []).filter((b) => b.type === "exercise");
     if (!exs.length) return "";
-    return `<h3>${n}.${i + 1} ${esc(sec.title)}</h3>` + exs.map((ex, j) => renderExercise(ex, {
-      num: `${n}.${i + 1}.${j + 1}`,
+    return `<h3>${secNo(u, i + 1)} ${esc(sec.title)}</h3>` + exs.map((ex, j) => renderExercise(ex, {
+      num: `${secNo(u, i + 1)}.${j + 1}`,
       answers: sub.answers?.[ex.id] || {},
       readOnly: true,
       auto: isAuto(ex) ? auto.items[ex.id] : undefined,
@@ -625,7 +658,7 @@ function heat(p, light) {
 function viewContent() {
   const rows = T.units.map((u) => `<tr>
     <td class="num">${esc(u.order)}</td><td><code>${esc(u.id)}</code></td><td>${u.status === "soon" ? esc(u.title) : `<a href="#${esc(u.id)}">${esc(u.title)}</a>`}</td>
-    <td>${u.status === "soon" ? `<span class="pill off">coming soon</span>` : `<span class="pill on">${(u.sections || []).length} sections</span>`}</td>
+    <td>${u.status === "soon" ? `<span class="pill off">coming soon</span>` : `<span class="pill on">${(u.sections || []).length} ${isWatch(u) ? "episodes" : "sections"}</span>`}</td>
     <td><button class="btn small danger" data-act="delete-unit" data-unit="${esc(u.id)}">Delete</button></td></tr>`).join("");
   return pageHead("Teaching tools", "Course content", "Units are imported from a JSON file that you keep on your computer.") + `
   <div class="box">
@@ -665,6 +698,7 @@ function splitUnit(u) {
   const meta = {
     title: u.title, order: Number(u.order ?? 0),
     ...(u.track === "watch" ? { track: "watch" } : {}), ...(u.subtitle ? { subtitle: String(u.subtitle) } : {}),
+    ...(u.code ? { code: String(u.code) } : {}),
     status: u.status || (hasContent ? "ready" : "soon"),
     sections: (u.sections || []).map((s) => ({ id: s.id, title: s.title, ...(s.subtitle ? { subtitle: s.subtitle } : {}) })),
   };

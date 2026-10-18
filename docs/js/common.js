@@ -317,15 +317,22 @@ export const ICON = {
   tools: svg('<path d="M14.5 5.5a4 4 0 0 0 5 5L12 18a2.1 2.1 0 0 1-3-3z"/><path d="M5 19l2-2"/>'),
   teacher: svg('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>'),
 };
-// Units of the "Watch & Talk" track (films and series episodes) have track:"watch".
+// "Watch & Talk" modules (a series or a film) have track:"watch"; each section is an episode
+// (or a part of a film) that the teacher opens for a group separately.
 export const isWatch = (u) => u?.track === "watch";
 export function unitNo(u, units) {
-  if (isWatch(u)) return "W" + (units.filter(isWatch).indexOf(u) + 1);
+  if (isWatch(u)) return u.code || "W" + (units.filter(isWatch).indexOf(u) + 1);
   return u.order || units.filter((x) => !isWatch(x)).indexOf(u) + 1;
 }
 export function unitLabel(u, units) {
-  return isWatch(u) ? `Watch & Talk ${unitNo(u, units).slice(1)}` : `Unit ${unitNo(u, units)}`;
+  return isWatch(u) ? u.title : `Unit ${unitNo(u, units)}`;
 }
+// number of a section: 1.2 in a unit, EL2 in a watch module (exercises: 1.2.3 and EL2.3)
+export function secCode(u, units, k) {
+  return isWatch(u) ? `${unitNo(u, units)}${k}` : `${unitNo(u, units)}.${k}`;
+}
+// is this episode open for the group? (ordinary units have no per-section access)
+export const secOpenFor = (g, u, secId) => !isWatch(u) || !!g?.openSections?.[u.id]?.includes(secId);
 export const LOGO = (teacher = false) => `<img class="logo" src="img/${teacher ? "logo-teacher" : "logo"}.svg" alt="" width="36" height="36">`;
 
 // Форма входа / регистрации / восстановления пароля (общая разметка)
