@@ -164,7 +164,7 @@ export function feedbackHTML(fb, { checkedAt } = {}) {
     ${issues ? `<ul class="wfb-issues">${issues}</ul>` : fb.grammarError ? "" : `<p class="wfb-ok">No grammar or spelling problems were found.</p>`}
     ${v ? `<div class="wfb-v"><span class="muted">${v.words} words</span> ${bars}</div>
       ${v.high.length ? `<p class="wfb-line"><b>Words at B2 and above:</b> ${v.high.map((x) => `${esc(x.w)} <small>${x.l}</small>`).join(", ")}</p>` : ""}
-      ${fb.unitTotal ? `<p class="wfb-line"><b>Unit phrases used (${v.unitUsed.length} of ${fb.unitTotal}):</b> ${v.unitUsed.length ? v.unitUsed.map(esc).join(", ") : "none yet"}</p>` : ""}
+      ${fb.unitTotal ? `<p class="wfb-line"><b>${fb.scope === "episode" ? "Phrases from this episode used" : "Unit phrases used"} (${v.unitUsed.length} of ${fb.unitTotal}):</b> ${v.unitUsed.length ? v.unitUsed.map(esc).join(", ") : "none yet"}</p>` : ""}
       ${v.offList.length ? `<p class="wfb-line muted">Not in the word lists (names, rare words or misspellings): ${v.offList.map(esc).join(", ")}</p>` : ""}` : ""}
     <p class="wfb-src">Grammar suggestions by <a href="https://languagetool.org" target="_blank">LanguageTool</a> · vocabulary levels from the CEFR-J Wordlist and the Octanove Vocabulary Profile</p>
   </div>`;

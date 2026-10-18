@@ -300,7 +300,9 @@ async function checkWriting(gid, unitId, exId) {
       .filter((s) => Object.values(s.answers?.[exId] || {}).some((v) => String(v).trim()));
     if (!confirm(`Check the writing in “${ex.title}”?\nStudents with answers: ${subs.length}.\nThe texts are sent to LanguageTool for the grammar check (about 3 seconds per student). Students will see the feedback and can correct their texts.`)) return;
     const V = await loadVocab();
-    const phrases = unitVocabulary(content);
+    // a series or a film: count only the words of the episode with this exercise, not the whole module
+    const watch = isWatch(T.units.find((x) => x.id === unitId));
+    const phrases = unitVocabulary(watch ? { sections: content.sections.filter((s) => (s.blocks || []).some((b) => b.id === exId)) } : content);
     let n = 0, ltFailed = 0;
     for (const s of subs) {
       n++;
@@ -313,7 +315,7 @@ async function checkWriting(gid, unitId, exId) {
       for (const it of ex.items || []) {
         const text = String(texts[it.id] || "");
         if (!text.trim()) continue;
-        fb[it.id] = { text, issues: issues[it.id] || [], grammarError, vocab: vocabProfile(text, V, phrases), unitTotal: phrases.length };
+        fb[it.id] = { text, issues: issues[it.id] || [], grammarError, vocab: vocabProfile(text, V, phrases), unitTotal: phrases.length, scope: watch ? "episode" : "unit" };
       }
       await setDoc(doc(db, "exerciseResults", subId(unitId, s.uid)), {
         uid: s.uid, groupId: gid, unitId,
