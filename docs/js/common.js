@@ -332,7 +332,9 @@ export function secCode(u, units, k) {
   return isWatch(u) ? `${unitNo(u, units)}${k}` : `${unitNo(u, units)}.${k}`;
 }
 // is this episode open for the group? (ordinary units have no per-section access)
-export const secOpenFor = (g, u, secId) => !isWatch(u) || !!g?.openSections?.[u.id]?.includes(secId);
+// an episode (or film) marked "status": "soon" is still being prepared: listed, but never opened
+export const secSoon = (u, secId) => (u?.sections || []).some((s) => s.id === secId && s.status === "soon");
+export const secOpenFor = (g, u, secId) => !isWatch(u) || (!secSoon(u, secId) && !!g?.openSections?.[u.id]?.includes(secId));
 export const LOGO = (teacher = false) => `<img class="logo" src="img/${teacher ? "logo-teacher" : "logo"}.svg" alt="" width="36" height="36">`;
 
 // Форма входа / регистрации / восстановления пароля (общая разметка)

@@ -44,7 +44,7 @@ export function renderUnitNav(el, { units, state, route, hrefPrefix = "", empty 
       if (secVisible && !secVisible(u, s)) return "";
       const on = current && (route.section || first?.id) === s.id;
       return `<a class="sb-item ${on ? "on" : ""}" href="#${hrefPrefix}${esc(u.id)}/${esc(s.id)}">
-        <span class="n">${secNum ? secNum(u, j + 1) : `${num}.${j + 1}`}</span><span class="t">${esc(s.title)}${s.subtitle ? `<span class="s">${esc(s.subtitle)}</span>` : ""}</span></a>`;
+        <span class="n">${secNum ? secNum(u, j + 1) : `${num}.${j + 1}`}</span><span class="t">${esc(s.title)}${s.status === "soon" ? `<span class="s">Coming soon</span>` : s.subtitle ? `<span class="s">${esc(s.subtitle)}</span>` : ""}</span></a>`;
     }).join("") : "";
     return `<div class="sb-unit ${open ? "open" : ""} ${st.locked ? "locked" : ""} ${current ? "current" : ""}">
       <button class="sb-uh" type="button" data-unit="${esc(u.id)}" data-can-open="${canOpen ? 1 : 0}">

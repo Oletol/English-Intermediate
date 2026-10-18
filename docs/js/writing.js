@@ -105,7 +105,8 @@ export function unitVocabulary(content) {
   const out = new Set();
   for (const s of content?.sections || [])
     for (const b of s.blocks || []) {
-      if (b.type === "flashcards") (b.cards || []).forEach((c) => out.add(c.front));
+      // verb forms in brackets ("lie low (lay, lain)") are not part of the phrase
+      if (b.type === "flashcards") (b.cards || []).forEach((c) => out.add(String(c.front).replace(/\s*\([^)]*\)\s*$/, "")));
       if (Array.isArray(b.vocab)) b.vocab.forEach((v) => out.add(v));
     }
   return [...out];

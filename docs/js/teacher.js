@@ -232,6 +232,8 @@ function viewUnit(r) {
   const blocks = [...sec.blocks];
   for (const note of [...(d.notes[sec.id] || [])].reverse()) blocks.splice(note.at, 0, { type: "teacher-note", html: note.html });
   const prev = secs[i - 1], next = secs[i + 1];
+  if (meta.status === "soon") return pageHead(`${esc(unitLbl(u))} &middot; ${secNo(u, i + 1)}`, esc(sec.title), esc(meta.subtitle || ""))
+    + `<div class="locked-msg"><span class="big">${ICON.tools}</span>This part is still being prepared. Students cannot open it yet.</div>`;
   return bar + pageHead(`${esc(unitLbl(u))} &middot; ${secNo(u, i + 1)}`, esc(sec.title), esc(meta.subtitle || sec.subtitle || ""))
     + renderBlocks(blocks, (ex) => ({
       key: d.keys[ex.id] || {}, readOnly: true,
@@ -332,6 +334,7 @@ function accessBar(u, g, secId) {
   if (isWatch(u)) {
     // series and films: each episode is opened for the group separately
     const sec = (u.sections || []).find((s) => s.id === secId);
+    if (sec?.status === "soon") return "";
     const on = g.openUnits.includes(u.id) && secOpenFor(g, u, secId);
     return sec ? `<div class="ub"><span>Group <b>${esc(g.name)}</b>, this episode:
         <span class="pill ${on ? "on" : "off"}">${on ? "open" : "closed"}</span></span>
@@ -361,6 +364,8 @@ function viewAccess() {
       // a series or a film: one row per episode, each opened separately
       const eps = (u.sections || []).map((s, k) => {
         const on = open && secOpenFor(g, u, s.id);
+        if (s.status === "soon") return `<tr><td class="num">${esc(secNo(u, k + 1))}</td><td>${esc(s.title)}</td>
+          <td><span class="pill off">coming soon</span></td><td class="muted">being prepared</td></tr>`;
         return `<tr><td class="num">${esc(secNo(u, k + 1))}</td><td><a href="#${esc(u.id)}/${esc(s.id)}">${esc(s.title)}</a></td>
           <td><span class="pill ${on ? "on" : "off"}">${on ? "open" : "closed"}</span>
           <button class="btn small" data-act="toggle-sec" data-unit="${esc(u.id)}" data-sec="${esc(s.id)}">${on ? "Close" : "Open"}</button></td>
@@ -702,7 +707,7 @@ function splitUnit(u) {
     ...(u.track === "watch" ? { track: "watch" } : {}), ...(u.subtitle ? { subtitle: String(u.subtitle) } : {}),
     ...(u.code ? { code: String(u.code) } : {}),
     status: u.status || (hasContent ? "ready" : "soon"),
-    sections: (u.sections || []).map((s) => ({ id: s.id, title: s.title, ...(s.subtitle ? { subtitle: s.subtitle } : {}) })),
+    sections: (u.sections || []).map((s) => ({ id: s.id, title: s.title, ...(s.subtitle ? { subtitle: s.subtitle } : {}), ...(s.status === "soon" ? { status: "soon" } : {}) })),
   };
   // timed tests: hidden from students until the teacher opens them
   const tests = {}, testKeys = {};
